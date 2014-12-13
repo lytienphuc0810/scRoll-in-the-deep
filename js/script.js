@@ -33,9 +33,11 @@
 //     // }, 0, 'linear');
 // }
 
+// Zoom function
+var CONST_ZOOM_AMOUNT = 0.05;
 var zoomCustom = function(time, delay2) {
-    var previousPercentage = 1 + 0.05 * previousZoomLevel;
-    var percentage = 1 + 0.05 * zoomLevel;
+    var previousPercentage = 1 + CONST_ZOOM_AMOUNT * previousZoomLevel;
+    var percentage = 1 + CONST_ZOOM_AMOUNT * zoomLevel;
 
     var originHeight = $('#canvas img').height();
     var originWidth = $('#canvas img').width();
@@ -54,139 +56,209 @@ var zoomCustom = function(time, delay2) {
     }, time, 'linear');
 }
 
+// handler for buttonIn
 $('#zoomInBtn').click(function(evt) {
     zoomLevel = 10;
     zoomCustom(400, 100);
 });
 
+// handler for buttonOut
 $('#zoomOutBtn').click(function(evt) {
     zoomLevel = 0;
     zoomCustom(400, 100);
 });
 
 // MOBILE
+// logger
 var showLog = function(textInput) {
     $('#infoBoard').text(textInput);
 }
 
+// bind touch event
 var myElement = document.getElementById('train-map');
-var hammertime = new Hammer(myElement)
+var mjolnir = new Hammer(myElement)
 
-hammertime.get('pan').set({
-    direction: Hammer.DIRECTION_ALL
-});
-
+// the distance moved in X and Y axes
 var currentDeltaX = 0;
 var currentDeltaY = 0;
 
-hammertime.on('panstart', function(e) {
+mjolnir.get('pan').set({
+    direction: Hammer.DIRECTION_ALL
+});
+
+// reset the distance in the beginning of panning
+mjolnir.on('panstart', function(e) {
     currentDeltaX = 0;
     currentDeltaY = 0;
 });
 
-hammertime.on('panmove', function(e) {
-    showLog('panmove ' + $('#canvas').css('x') + ' ' + $('#canvas').css('y'));
+// callback according to time of moving 1 finger
+mjolnir.on('panmove', function(e) {
 
+    // the absolute distances moved
     var deltaX = parseInt(e.deltaX);
     var deltaY = parseInt(e.deltaY);
 
-    var rawCoordinateX = $('#canvas').css('x');
-    var currentCoordinateX;
-    if (typeof(rawCoordinateX) === 'string') {
-        currentCoordinateX = parseInt(rawCoordinateX.substring(0, rawCoordinateX.length - 2));
-    } else if (typeof(rawCoordinateX) === 'number') {
-        currentCoordinateX = rawCoordinateX;
+    // the raw x coordinate (distance moved from 0 of X axis)
+    var rawTransitionX = $('#canvas').css('x');
+    // the raw y coordinate (distance moved from 0 of Y axis)
+    var rawTransitionY = $('#canvas').css('y');
+
+    // the x coordinate (distance moved from 0 of X axis)
+    var transitionX;
+    if (typeof(rawTransitionX) === 'string') {
+        transitionX = parseInt(rawTransitionX.substring(0, rawTransitionX.length - 2));
+    } else if (typeof(rawTransitionX) === 'number') {
+        transitionX = rawTransitionX;
     }
 
-    var rawCoordinateY = $('#canvas').css('y');
-    var currentCoordinateY;
-    if (typeof(rawCoordinateY) === 'string') {
-        currentCoordinateY = parseInt(rawCoordinateY.substring(0, rawCoordinateY.length - 2));
-    } else if (typeof(rawCoordinateY) === 'number') {
-        currentCoordinateY = rawCoordinateY;
+    // the y coordinate (distance moved from 0 of Y axis)
+    var transitionY;
+    if (typeof(rawTransitionY) === 'string') {
+        transitionY = parseInt(rawTransitionY.substring(0, rawTransitionY.length - 2));
+    } else if (typeof(rawTransitionY) === 'number') {
+        transitionY = rawTransitionY;
     }
 
-    var percentage = 1 + 0.05 * zoomLevel;
+    var percentage = 1 + CONST_ZOOM_AMOUNT * zoomLevel;
+
+    // origin height and width
     var originHeight = $('#canvas img').height();
     var originWidth = $('#canvas img').width();
+
+    // viewport height and width (or coordinates)
     var viewportHeight = $('#train-map').height();
     var viewportWidth = $('#train-map').width();
+
+    // shift distances for transition (after scaling)
     var shiftX = originWidth * (percentage - 1) / 2;
     var shiftY = originHeight * (percentage - 1) / 2;
 
 
+    // TODO reduce floating point imprecision
+    /*  
+
+       O----------> + x
+        |    
+        |    
+        |    
+        |    
+        | + y   
+
+
+                        b  
+        /////////////////////////////////////
+        //     O                           //
+        //      //////////                 //
+        //    c //      //                 //
+      a //      //////////                 //
+        //          d                      //
+        //                                 //
+        //                                 //
+        /////////////////////////////////////
+    */
+
+    // height and width after scaling
+    var a = originHeight * percentage;
     var b = originWidth * percentage;
+
+    // just trivial things
+    var c = viewportHeight;
     var d = viewportWidth;
+
+    // the distance moved between 2 panmove callback
     var accelDeltaX = 0;
-    if (currentCoordinateX <= 0 + shiftX && currentCoordinateX >= -(b - d) + shiftX) {
-        if (currentCoordinateX + deltaX - currentDeltaX > 0 + shiftX) {
-            deltaX = currentDeltaX - currentCoordinateX + shiftX;
-        } else if (currentCoordinateX + deltaX - currentDeltaX < -(b - d) + shiftX) {
-            deltaX = currentDeltaX - currentCoordinateX - (b - d) + shiftX;
+
+    var upperBoundaryX = 0;
+    var lowerBoundaryX = -(b - d);
+
+    // showLog('panmove ' + (transitionX - shiftX) + ' ' + (upperBoundaryX));
+
+    // TODO neccessary?
+    if (Math.floor(transitionX - shiftX) <= upperBoundaryX + 10 && Math.ceil(transitionX - shiftX) >= lowerBoundaryX - 10) {
+        var temp = deltaX - currentDeltaX;
+        // normalization
+        if (transitionX + temp - shiftX > upperBoundaryX) {
+            deltaX = upperBoundaryX - transitionX + shiftX + currentDeltaX;
+        } else if (transitionX + temp - shiftX < lowerBoundaryX) {
+            deltaX = lowerBoundaryX - transitionX + shiftX + currentDeltaX;
         }
         accelDeltaX = deltaX - currentDeltaX;
         currentDeltaX = deltaX;
     }
 
-    var a = originHeight * percentage;
-    var c = viewportHeight;
     var accelDeltaY = 0;
-    if (currentCoordinateY <= 0 + shiftY && currentCoordinateY >= -(a - c) + shiftY) {
-        if (currentCoordinateY + deltaY - currentDeltaY > 0 + shiftY) {
-            deltaY = currentDeltaY - currentCoordinateY + shiftY;
-        } else if (currentCoordinateY + deltaY - currentDeltaY < -(a - c) + shiftY) {
-            deltaY = currentDeltaY - currentCoordinateY - (a - c) + shiftY;
+
+    var upperBoundaryY = 0;
+    var lowerBoundaryY = -(a - c);
+
+    showLog('panmove ' + (transitionY - shiftY) + ' ' + (upperBoundaryY));
+
+    // TODO neccessary?
+    if (Math.floor(transitionY - shiftY) <= upperBoundaryY + 10 && Math.ceil(transitionY - shiftY) >= lowerBoundaryY - 10) {
+        var temp = deltaY - currentDeltaY;
+        // normalization
+        if (transitionY + temp - shiftY > upperBoundaryY) {
+            deltaY = upperBoundaryY - transitionY + shiftY + currentDeltaY;
+        } else if (transitionY + temp - shiftY < lowerBoundaryY) {
+            deltaY = lowerBoundaryY - transitionY + shiftY + currentDeltaY;
         }
         accelDeltaY = deltaY - currentDeltaY;
         currentDeltaY = deltaY;
     }
 
     $('#canvas').transition({
-        // x: '+=' + accelDeltaX
-        y: '+=' + accelDeltaY
+        x: '+=' + Math.floor(accelDeltaX),
+        y: '+=' + Math.floor(accelDeltaY)
     }, 0, 'linear');
 });
 
-hammertime.get('pinch').set({
+// enable pinch (zoom)
+mjolnir.get('pinch').set({
     enable: true
 });
 
 var previousZoomLevel = 0;
 var zoomLevel = 0;
-var MAX_ZOOM = 20;
+var CONST_MAX_ZOOM = 20;
+var CONST_MIN_ZOOM = 0;
+
+// counter for distance moved, increase when 2 fingers travel a specific distance
 var distanceCounter = 0;
 
 
-hammertime.on('pinchstart', function(e) {
+// reset on start and end
+mjolnir.on('pinchstart', function(e) {
     distanceCounter = 0;
 });
 
-hammertime.on('pinchend', function(e) {
+mjolnir.on('pinchend', function(e) {
     distanceCounter = 0;
 });
 
-hammertime.on('pinchout', function(e) {
+// calculate zoom level
+mjolnir.on('pinchout', function(e) {
     showLog('pinchout' + Math.floor(e.distance / 10));
 
     if (Math.floor(e.distance / 5) > distanceCounter) {
         zoomLevel++;
-        if (zoomLevel > MAX_ZOOM) {
-            zoomLevel = MAX_ZOOM;
+        if (zoomLevel > CONST_MAX_ZOOM) {
+            zoomLevel = CONST_MAX_ZOOM;
         } else {
             previousZoomLevel = zoomLevel - 1;
-            zoomCustom(100, 0);
+            zoomCustom(200, 0);
         }
         distanceCounter++;
     }
 });
 
-hammertime.on('pinchin', function(e) {
+mjolnir.on('pinchin', function(e) {
     showLog('pinchin' + Math.floor(e.distance / 10));
 
     if (Math.floor(e.distance / 5) > distanceCounter) {
         zoomLevel--;
-        if (zoomLevel < 0) {
-            zoomLevel = 0;
+        if (zoomLevel < CONST_MIN_ZOOM) {
+            zoomLevel = CONST_MIN_ZOOM;
         } else {
             previousZoomLevel = zoomLevel + 1;
             zoomCustom(200, 0);
